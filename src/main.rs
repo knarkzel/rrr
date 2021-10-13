@@ -1,5 +1,3 @@
-#![feature(stdio_locked)]
-
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use std::{
@@ -50,9 +48,15 @@ impl Target {
 }
 
 #[derive(Default)]
+struct Options {
+    show_hidden: bool,
+}
+
+#[derive(Default)]
 struct Context {
     cursor: usize,
     current_dir: PathBuf,
+    options: Options,
 }
 
 impl Context {
@@ -65,8 +69,17 @@ impl Context {
     }
 
     fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
-        Ok(read_dir(&self.current_dir)?
+        let iterator = read_dir(&self.current_dir)?
             .flat_map(|e| e)
+            .filter(|e| {
+                !e.path()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(".")
+                    || self.options.show_hidden
+            })
             .sorted_by(|a, b| a.file_name().cmp(&b.file_name()))
             .sorted_by_key(|e| {
                 !e.path()
@@ -76,7 +89,8 @@ impl Context {
                     .unwrap()
                     .starts_with(".")
             })
-            .sorted_by_key(|e| !e.path().is_dir()))
+            .sorted_by_key(|e| !e.path().is_dir());
+        Ok(iterator)
     }
 
     fn current_dir(&self) -> Option<&str> {
@@ -134,7 +148,14 @@ fn main() -> Result<()> {
     let mut context = Context::new()?;
 
     'update: loop {
+        // Clamp the cursor if it's out of bounds, due to search or hidden filter
+        let amount_files = context.read_directory()?.count();
+        if context.cursor >= amount_files {
+            context.cursor = amount_files.saturating_sub(1);
+        }
+
         let listing = context.listing()?;
+
         terminal.draw(|frame| {
             let size = frame.size();
 
@@ -172,6 +193,11 @@ fn main() -> Result<()> {
                         continue 'update;
                     }
                 }
+                Key::Char('.') => {
+                    context.options.show_hidden = !context.options.show_hidden;
+                    continue 'update;
+                }
+                // TODO: Fix behaviour of terminal such that launching programs work
                 Key::Char('e') => match (context.target(), var("EDITOR")) {
                     (Some(target), Ok(editor)) => {
                         Command::new(editor).arg(target.path()).spawn()?;
