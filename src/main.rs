@@ -1,7 +1,8 @@
 use anyhow::{bail, Result};
+use itertools::Itertools;
 use std::{
     ffi::OsString,
-    fs::read_dir,
+    fs::{read_dir, DirEntry},
     io::{stdin, stdout},
     path::PathBuf,
 };
@@ -34,27 +35,33 @@ impl Context {
         Ok(context)
     }
 
+    fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
+        Ok(read_dir(&self.current_dir)?
+            .flat_map(|e| e)
+            .sorted_by_key(|e| !e.path().file_name().unwrap().to_str().unwrap().starts_with("."))
+            .sorted_by_key(|e| !e.path().is_dir()))
+    }
+
     fn current_dir(&self) -> Option<&str> {
         self.current_dir.as_os_str().to_str()
     }
 
     fn amount_dir(&self) -> Result<usize> {
-        Ok(read_dir(&self.current_dir)?.count())
+        Ok(self.read_directory()?.count())
     }
 
     /// Returns name of directory if target is a directory, otherwise returns error
     fn target_dir(&self) -> Result<OsString> {
-        let target = read_dir(&self.current_dir)?.skip(self.cursor).next();
+        let target = self.read_directory()?.skip(self.cursor).next();
         match target {
-            Some(Ok(target)) if target.path().is_dir() => Ok(target.file_name()),
+            Some(target) if target.path().is_dir() => Ok(target.file_name()),
             _ => bail!("Error occured when trying to get current target"),
         }
     }
 
     fn listing(&self) -> Result<Text<'_>> {
         let mut text = Text::default();
-        for (line, path) in read_dir(&self.current_dir)?.enumerate() {
-            let path = path?;
+        for (line, path) in self.read_directory()?.enumerate() {
             if let Some(input) = path.file_name().to_str() {
                 let input = input.to_string();
                 let mut spans = Spans::default();
