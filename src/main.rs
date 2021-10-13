@@ -1,11 +1,9 @@
 use anyhow::{bail, Result};
 use itertools::Itertools;
-use std::fs::File;
-use std::io::prelude::*;
 use std::{
     ffi::OsString,
-    fs::{read_dir, DirEntry},
-    io::{stdin, stdout},
+    fs::{read_dir, DirEntry, File},
+    io::{prelude::*, stdin, stdout},
     path::PathBuf,
 };
 use termion::{
@@ -16,7 +14,7 @@ use termion::{
 };
 use tui::{
     backend::TermionBackend,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
     widgets::{Block, Borders, Paragraph},
     Terminal,
@@ -26,6 +24,31 @@ use tui::{
 struct Context {
     cursor: usize,
     current_dir: PathBuf,
+}
+
+enum Target {
+    File,
+    Directory,
+}
+
+impl Target {
+    fn style(self, highlight: bool) -> Style {
+        match self {
+            Self::File => {
+                if highlight {
+                    Style::default().fg(Color::Black).bg(Color::White)
+                } else {
+                    Style::default().fg(Color::White)
+                }
+            }
+            Self::Directory => if highlight {
+                Style::default().fg(Color::Black).bg(Color::Blue)
+            } else {
+                Style::default().fg(Color::Blue)
+            }
+            .add_modifier(Modifier::BOLD),
+        }
+    }
 }
 
 impl Context {
@@ -73,17 +96,15 @@ impl Context {
         for (line, path) in self.read_directory()?.enumerate() {
             if let Some(input) = path.file_name().to_str() {
                 let input = input.to_string();
+                let is_dir = path.path().is_dir();
+                let highlight = self.cursor == line;
                 let mut spans = Spans::default();
-                if self.cursor == line {
-                    spans.0.push(Span::styled(
-                        input,
-                        Style::default().fg(Color::Black).bg(Color::White),
-                    ));
+                let items = &mut spans.0;
+                if is_dir {
+                    items.push(Span::styled(input, Target::Directory.style(highlight)));
+                    items.push(Span::raw("/"));
                 } else {
-                    spans.0.push(Span::raw(input));
-                }
-                if path.path().is_dir() {
-                    spans.0.push(Span::raw("/"));
+                    items.push(Span::styled(input, Target::File.style(highlight)));
                 }
                 text.lines.push(spans);
             }
@@ -115,22 +136,22 @@ fn main() -> Result<()> {
         for key in stdin().keys() {
             match key? {
                 Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
-                Key::Up => {
+                Key::Up | Key::Char('k') => {
                     context.cursor = context.cursor.saturating_sub(1);
                     continue 'update;
                 }
-                Key::Down => {
+                Key::Down | Key::Char('j') => {
                     if context.cursor < context.amount_dir()?.saturating_sub(1) {
                         context.cursor = context.cursor.saturating_add(1);
                         continue 'update;
                     }
                 }
-                Key::Left => {
+                Key::Left | Key::Char('h') => {
                     context.current_dir.pop();
                     context.cursor = 0;
                     continue 'update;
                 }
-                Key::Right => {
+                Key::Right | Key::Char('l') => {
                     if let Ok(target) = context.target_dir() {
                         context.current_dir.push(target);
                         context.cursor = 0;
