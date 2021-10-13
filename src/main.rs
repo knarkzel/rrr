@@ -1,10 +1,14 @@
+#![feature(stdio_locked)]
+
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use std::{
+    env::var,
     ffi::OsString,
     fs::{read_dir, DirEntry, File},
     io::{prelude::*, stdin, stdout},
     path::PathBuf,
+    process::Command,
 };
 use termion::{
     event::Key,
@@ -19,12 +23,6 @@ use tui::{
     widgets::{Block, Paragraph},
     Terminal,
 };
-
-#[derive(Default)]
-struct Context {
-    cursor: usize,
-    current_dir: PathBuf,
-}
 
 enum Target {
     File,
@@ -49,6 +47,12 @@ impl Target {
             .add_modifier(Modifier::BOLD),
         }
     }
+}
+
+#[derive(Default)]
+struct Context {
+    cursor: usize,
+    current_dir: PathBuf,
 }
 
 impl Context {
@@ -83,9 +87,16 @@ impl Context {
         Ok(self.read_directory()?.count())
     }
 
+    fn target(&self) -> Option<DirEntry> {
+        match self.read_directory() {
+            Ok(iter) => iter.skip(self.cursor).next(),
+            _ => None,
+        }
+    }
+
     /// Returns name of directory if target is a directory, otherwise returns error
     fn target_dir(&self) -> Result<OsString> {
-        let target = self.read_directory()?.skip(self.cursor).next();
+        let target = self.target();
         match target {
             Some(target) if target.path().is_dir() => Ok(target.file_name()),
             _ => bail!("Error occured when trying to get current target"),
@@ -161,6 +172,12 @@ fn main() -> Result<()> {
                         continue 'update;
                     }
                 }
+                Key::Char('e') => match (context.target(), var("EDITOR")) {
+                    (Some(target), Ok(editor)) => {
+                        Command::new(editor).arg(target.path()).spawn()?;
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
