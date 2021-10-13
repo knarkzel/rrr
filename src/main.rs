@@ -16,7 +16,7 @@ use tui::{
     backend::TermionBackend,
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Paragraph},
     Terminal,
 };
 
@@ -63,6 +63,7 @@ impl Context {
     fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
         Ok(read_dir(&self.current_dir)?
             .flat_map(|e| e)
+            .sorted_by(|a, b| a.file_name().cmp(&b.file_name()))
             .sorted_by_key(|e| {
                 !e.path()
                     .file_name()
@@ -102,7 +103,7 @@ impl Context {
                 let items = &mut spans.0;
                 if is_dir {
                     items.push(Span::styled(input, Target::Directory.style(highlight)));
-                    items.push(Span::raw("/"));
+                    items.push(Span::styled("/", Style::default().fg(Color::Reset)));
                 } else {
                     items.push(Span::styled(input, Target::File.style(highlight)));
                 }
@@ -128,7 +129,9 @@ fn main() -> Result<()> {
 
             // Files pane
             let directory = Span::from(context.current_dir().unwrap_or("Invalid directory"));
-            let outline = Block::default().borders(Borders::ALL).title(directory);
+            let outline = Block::default()
+                .title(directory)
+                .style(Style::default().fg(Color::LightGreen));
             let files = Paragraph::new(listing).block(outline);
             frame.render_widget(files, size);
         })?;
