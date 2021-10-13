@@ -1,5 +1,7 @@
 use anyhow::{bail, Result};
 use itertools::Itertools;
+use std::fs::File;
+use std::io::prelude::*;
 use std::{
     ffi::OsString,
     fs::{read_dir, DirEntry},
@@ -38,7 +40,14 @@ impl Context {
     fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
         Ok(read_dir(&self.current_dir)?
             .flat_map(|e| e)
-            .sorted_by_key(|e| !e.path().file_name().unwrap().to_str().unwrap().starts_with("."))
+            .sorted_by_key(|e| {
+                !e.path()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(".")
+            })
             .sorted_by_key(|e| !e.path().is_dir()))
     }
 
@@ -91,7 +100,7 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     let mut context = Context::new()?;
 
-    'draw: loop {
+    'update: loop {
         let listing = context.listing()?;
         terminal.draw(|frame| {
             let size = frame.size();
@@ -105,34 +114,40 @@ fn main() -> Result<()> {
 
         for key in stdin().keys() {
             match key? {
-                Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => {
-                    std::env::set_current_dir(context.current_dir)?;
-                    return Ok(());
-                }
+                Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
                 Key::Up => {
                     context.cursor = context.cursor.saturating_sub(1);
-                    continue 'draw;
+                    continue 'update;
                 }
                 Key::Down => {
                     if context.cursor < context.amount_dir()?.saturating_sub(1) {
                         context.cursor = context.cursor.saturating_add(1);
-                        continue 'draw;
+                        continue 'update;
                     }
                 }
                 Key::Left => {
                     context.current_dir.pop();
                     context.cursor = 0;
-                    continue 'draw;
+                    continue 'update;
                 }
                 Key::Right => {
                     if let Ok(target) = context.target_dir() {
                         context.current_dir.push(target);
                         context.cursor = 0;
-                        continue 'draw;
+                        continue 'update;
                     }
                 }
                 _ => {}
             }
         }
     }
+
+    // Write last entered directory into temporary file
+    if let Some(mut path) = dirs::cache_dir() {
+        path.push(".rrr");
+        let mut file = File::create(path)?;
+        write!(&mut file, "{}", context.current_dir.display())?;
+    }
+
+    Ok(())
 }
