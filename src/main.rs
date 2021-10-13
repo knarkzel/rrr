@@ -1,12 +1,11 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::{
-    fmt::Write,
+    ffi::OsString,
     fs::read_dir,
     io::{stdin, stdout},
     path::PathBuf,
 };
 use termion::{
-    color,
     event::Key,
     input::{MouseTerminal, TermRead},
     raw::IntoRawMode,
@@ -16,7 +15,7 @@ use tui::{
     backend::TermionBackend,
     style::{Color, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph},
     Terminal,
 };
 
@@ -37,6 +36,19 @@ impl Context {
 
     fn current_dir(&self) -> Option<&str> {
         self.current_dir.as_os_str().to_str()
+    }
+
+    fn amount_dir(&self) -> Result<usize> {
+        Ok(read_dir(&self.current_dir)?.count())
+    }
+
+    /// Returns name of directory if target is a directory, otherwise returns error
+    fn target_dir(&self) -> Result<OsString> {
+        let target = read_dir(&self.current_dir)?.skip(self.cursor).next();
+        match target {
+            Some(Ok(target)) if target.path().is_dir() => Ok(target.file_name()),
+            _ => bail!("Error occured when trying to get current target"),
+        }
     }
 
     fn listing(&self) -> Result<Text<'_>> {
@@ -65,32 +77,52 @@ impl Context {
 }
 
 fn main() -> Result<()> {
-    let context = Context::new()?;
     let stdout = stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+    let mut context = Context::new()?;
 
-    loop {
+    'draw: loop {
         let listing = context.listing()?;
         terminal.draw(|frame| {
             let size = frame.size();
 
             // Files pane
             let directory = Span::from(context.current_dir().unwrap_or("Invalid directory"));
-            let outline = Block::default()
-                .borders(Borders::ALL)
-                .title(directory);
+            let outline = Block::default().borders(Borders::ALL).title(directory);
             let files = Paragraph::new(listing).block(outline);
             frame.render_widget(files, size);
         })?;
 
         for key in stdin().keys() {
             match key? {
-                Key::Char('q') => {
+                Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => {
                     std::env::set_current_dir(context.current_dir)?;
                     return Ok(());
+                }
+                Key::Up => {
+                    context.cursor = context.cursor.saturating_sub(1);
+                    continue 'draw;
+                }
+                Key::Down => {
+                    if context.cursor < context.amount_dir()?.saturating_sub(1) {
+                        context.cursor = context.cursor.saturating_add(1);
+                        continue 'draw;
+                    }
+                }
+                Key::Left => {
+                    context.current_dir.pop();
+                    context.cursor = 0;
+                    continue 'draw;
+                }
+                Key::Right => {
+                    if let Ok(target) = context.target_dir() {
+                        context.current_dir.push(target);
+                        context.cursor = 0;
+                        continue 'draw;
+                    }
                 }
                 _ => {}
             }
