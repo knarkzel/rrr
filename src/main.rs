@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use std::{
+    collections::HashMap,
     env::var,
     ffi::OsString,
     fs::{read_dir, DirEntry, File},
@@ -55,6 +56,7 @@ struct Options {
 #[derive(Default)]
 struct Context {
     cursor: usize,
+    previous_locations: HashMap<PathBuf, usize>,
     current_dir: PathBuf,
     options: Options,
 }
@@ -99,6 +101,18 @@ impl Context {
 
     fn amount_dir(&self) -> Result<usize> {
         Ok(self.read_directory()?.count())
+    }
+
+    fn save_location(&mut self) {
+        self.previous_locations
+            .insert(self.current_dir.clone(), self.cursor);
+    }
+
+    fn restore_location(&mut self) {
+        match self.previous_locations.get(&self.current_dir) {
+            Some(location) => self.cursor = *location,
+            None => self.cursor = 0,
+        }
     }
 
     fn target(&self) -> Option<DirEntry> {
@@ -182,14 +196,16 @@ fn main() -> Result<()> {
                     }
                 }
                 Key::Left | Key::Char('h') => {
+                    context.save_location();
                     context.current_dir.pop();
-                    context.cursor = 0;
+                    context.restore_location();
                     continue 'update;
                 }
                 Key::Right | Key::Char('l') => {
                     if let Ok(target) = context.target_dir() {
+                        context.save_location();
                         context.current_dir.push(target);
-                        context.cursor = 0;
+                        context.restore_location();
                         continue 'update;
                     }
                 }
