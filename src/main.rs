@@ -154,7 +154,7 @@ fn main() -> Result<()> {
     let mut context = Context::new()?;
 
     'update: loop {
-        // Clamp the cursor if it's out of bounds, due to search or hidden filter
+        // Clamp the cursor if it's out of bounds
         let amount_files = context.read_directory()?.count();
         if context.cursor >= amount_files {
             context.cursor = amount_files.saturating_sub(1);
@@ -180,38 +180,36 @@ fn main() -> Result<()> {
                     Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
                     Key::Up | Key::Char('k') => {
                         context.cursor = context.cursor.saturating_sub(1);
-                        continue 'update;
                     }
                     Key::Down | Key::Char('j') => {
-                        if context.cursor < context.amount_dir()?.saturating_sub(1) {
-                            context.cursor = context.cursor.saturating_add(1);
-                            continue 'update;
-                        }
+                        context.cursor = context.cursor.saturating_add(1);
                     }
                     Key::Left | Key::Char('h') => {
                         context.save_location();
                         context.current_dir.pop();
                         context.restore_location();
-                        continue 'update;
                     }
                     Key::Right | Key::Char('l') => {
                         if let Ok(target) = context.target_dir() {
                             context.save_location();
                             context.current_dir.push(target);
                             context.restore_location();
-                            continue 'update;
                         }
                     }
                     Key::Char('.') => {
                         context.options.show_hidden = !context.options.show_hidden;
-                        continue 'update;
                     }
                     Key::Char('e') => {
                         if let Some(target) = context.target() {
                             edit_file(target.path())?;
                             terminal.clear()?;
-                            continue 'update;
                         }
+                    }
+                    Key::Ctrl('d') => {
+                        context.cursor = context.cursor.saturating_add(10);
+                    }
+                    Key::Ctrl('u') => {
+                        context.cursor = context.cursor.saturating_sub(10);
                     }
                     _ => {}
                 }
