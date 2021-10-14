@@ -1,20 +1,14 @@
 use anyhow::{bail, Result};
+use edit::edit_file;
 use itertools::Itertools;
 use std::{
     collections::HashMap,
-    env::var,
     ffi::OsString,
     fs::{read_dir, DirEntry, File},
     io::{prelude::*, stdin, stdout},
     path::PathBuf,
-    process::Command,
 };
-use termion::{
-    event::Key,
-    input::{MouseTerminal, TermRead},
-    raw::IntoRawMode,
-    screen::AlternateScreen,
-};
+use termion::{event::Key, input::TermRead, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{
     backend::TermionBackend,
     style::{Color, Modifier, Style},
@@ -70,31 +64,6 @@ impl Context {
         Ok(context)
     }
 
-    fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
-        let iterator = read_dir(&self.current_dir)?
-            .flat_map(|e| e)
-            .filter(|e| {
-                !e.path()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .starts_with(".")
-                    || self.options.show_hidden
-            })
-            .sorted_by(|a, b| a.file_name().cmp(&b.file_name()))
-            .sorted_by_key(|e| {
-                !e.path()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .starts_with(".")
-            })
-            .sorted_by_key(|e| !e.path().is_dir());
-        Ok(iterator)
-    }
-
     fn current_dir(&self) -> Option<&str> {
         self.current_dir.as_os_str().to_str()
     }
@@ -122,13 +91,37 @@ impl Context {
         }
     }
 
-    /// Returns name of directory if target is a directory, otherwise returns error
     fn target_dir(&self) -> Result<OsString> {
         let target = self.target();
         match target {
             Some(target) if target.path().is_dir() => Ok(target.file_name()),
             _ => bail!("Error occured when trying to get current target"),
         }
+    }
+
+    fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
+        let iterator = read_dir(&self.current_dir)?
+            .flat_map(|e| e)
+            .filter(|e| {
+                !e.path()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(".")
+                    || self.options.show_hidden
+            })
+            .sorted_by(|a, b| a.file_name().cmp(&b.file_name()))
+            .sorted_by_key(|e| {
+                !e.path()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(".")
+            })
+            .sorted_by_key(|e| !e.path().is_dir());
+        Ok(iterator)
     }
 
     fn listing(&self) -> Result<Text<'_>> {
@@ -155,7 +148,6 @@ impl Context {
 
 fn main() -> Result<()> {
     let stdout = stdout().into_raw_mode()?;
-    let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -183,44 +175,47 @@ fn main() -> Result<()> {
         })?;
 
         for key in stdin().keys() {
-            match key? {
-                Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
-                Key::Up | Key::Char('k') => {
-                    context.cursor = context.cursor.saturating_sub(1);
-                    continue 'update;
-                }
-                Key::Down | Key::Char('j') => {
-                    if context.cursor < context.amount_dir()?.saturating_sub(1) {
-                        context.cursor = context.cursor.saturating_add(1);
+            if let Ok(key) = key {
+                match key {
+                    Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
+                    Key::Up | Key::Char('k') => {
+                        context.cursor = context.cursor.saturating_sub(1);
                         continue 'update;
                     }
-                }
-                Key::Left | Key::Char('h') => {
-                    context.save_location();
-                    context.current_dir.pop();
-                    context.restore_location();
-                    continue 'update;
-                }
-                Key::Right | Key::Char('l') => {
-                    if let Ok(target) = context.target_dir() {
+                    Key::Down | Key::Char('j') => {
+                        if context.cursor < context.amount_dir()?.saturating_sub(1) {
+                            context.cursor = context.cursor.saturating_add(1);
+                            continue 'update;
+                        }
+                    }
+                    Key::Left | Key::Char('h') => {
                         context.save_location();
-                        context.current_dir.push(target);
+                        context.current_dir.pop();
                         context.restore_location();
                         continue 'update;
                     }
-                }
-                Key::Char('.') => {
-                    context.options.show_hidden = !context.options.show_hidden;
-                    continue 'update;
-                }
-                // TODO: Fix behaviour of terminal such that launching programs work
-                Key::Char('e') => match (context.target(), var("EDITOR")) {
-                    (Some(target), Ok(editor)) => {
-                        Command::new(editor).arg(target.path()).spawn()?;
+                    Key::Right | Key::Char('l') => {
+                        if let Ok(target) = context.target_dir() {
+                            context.save_location();
+                            context.current_dir.push(target);
+                            context.restore_location();
+                            continue 'update;
+                        }
+                    }
+                    Key::Char('.') => {
+                        context.options.show_hidden = !context.options.show_hidden;
+                        continue 'update;
+                    }
+                    Key::Char('e') => {
+                        if let Some(target) = context.target() {
+                            edit_file(target.path())?;
+                            terminal.clear()?;
+                            continue 'update;
+                        }
                     }
                     _ => {}
-                },
-                _ => {}
+                }
+                continue 'update;
             }
         }
     }
