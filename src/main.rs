@@ -1,5 +1,4 @@
 use anyhow::{bail, Result};
-use edit::edit_file;
 use itertools::Itertools;
 use std::{
     collections::HashMap,
@@ -197,7 +196,9 @@ fn main() -> Result<()> {
                     }
                     Key::Char('e') => {
                         if let Some(target) = context.target() {
-                            edit_file(target.path())?;
+                            if edit_this::file(target.path()).is_err() {
+                                // Output error to log
+                            }
                             terminal.clear()?;
                         }
                     }
