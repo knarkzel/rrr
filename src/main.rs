@@ -68,10 +68,6 @@ impl Context {
         self.current_dir.as_os_str().to_str()
     }
 
-    fn amount_dir(&self) -> Result<usize> {
-        Ok(self.read_directory()?.count())
-    }
-
     fn save_location(&mut self) {
         self.previous_locations
             .insert(self.current_dir.clone(), self.cursor);
@@ -210,6 +206,13 @@ fn main() -> Result<()> {
                     }
                     Key::Ctrl('u') => {
                         context.cursor = context.cursor.saturating_sub(10);
+                    }
+                    Key::Char('o') => {
+                        if let Some(target) = context.target() {
+                            if open::that(target.path()).is_err() {
+                                // Output error to log
+                            }
+                        }
                     }
                     _ => {}
                 }
