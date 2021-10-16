@@ -16,26 +16,6 @@ use tui::{
     Terminal,
 };
 
-#[derive(Default)]
-struct Views {
-    index: usize,
-    contexts: [Context; 4],
-}
-
-impl Views {
-    fn new() -> Result<Self> {
-        let mut views = Self::default(); 
-        for context in &mut views.contexts {
-            *context = Context::new()?;
-        }
-        Ok(views)
-    }
-
-    fn current_context(&mut self) -> &mut Context {
-        &mut self.contexts[self.index]
-    }
-}
-
 fn main() -> Result<()> {
     let stdout = stdout().into_raw_mode()?;
     let stdout = AlternateScreen::from(stdout);
@@ -45,6 +25,7 @@ fn main() -> Result<()> {
 
     'update: loop {
         // Assign current context
+        let index = views.index + 1;
         let mut context = views.current_context();
 
         // Clamp the cursor if it's out of bounds
@@ -58,11 +39,27 @@ fn main() -> Result<()> {
         terminal.draw(|frame| {
             let size = frame.size();
 
+            // Header
+            let mut header = Spans::default();
+            let items = &mut header.0;
+            for number in 1..=4 {
+                if number == index {
+                    items.push(Span::styled(
+                        format!("[{}]", number),
+                        Style::default()
+                            .fg(Color::Blue)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                } else {
+                    items.push(Span::raw(number.to_string()));
+                }
+                items.push(Span::raw(" "));
+            }
+            let directory = context.current_dir().unwrap_or("Invalid directory");
+            items.push(Span::styled(directory, Style::default().fg(Color::Blue)));
+            let outline = Block::default().title(header);
+
             // Files pane
-            let directory = Span::from(context.current_dir().unwrap_or("Invalid directory"));
-            let outline = Block::default()
-                .title(directory)
-                .style(Style::default().fg(Color::LightGreen));
             let files = Paragraph::new(listing).block(outline);
             frame.render_widget(files, size);
         })?;
@@ -94,9 +91,7 @@ fn main() -> Result<()> {
                     }
                     Key::Char('e') => {
                         if let Some(target) = context.target() {
-                            if edit_this::file(target.path()).is_err() {
-                                // Output error to log
-                            }
+                            if edit_this::file(target.path()).is_err() {}
                             terminal.clear()?;
                         }
                     }
@@ -108,14 +103,22 @@ fn main() -> Result<()> {
                     }
                     Key::Char('o') => {
                         if let Some(target) = context.target() {
-                            if open::that(target.path()).is_err() {
-                                // Output error to log
-                            }
+                            if open::that(target.path()).is_err() {}
                         }
                     }
-                    Key::Char(index) if ('1'..'4').any(|digit| digit == index) => {
+                    Key::Char(index) if ('1'..='4').any(|digit| digit == index) => {
                         if let Some(index) = index.to_digit(10) {
                             views.index = index.saturating_sub(1) as usize;
+                        }
+                    }
+                    Key::Char('>') => {
+                        views.index = (views.index + 1) % 4;
+                    }
+                    Key::Char('<') => {
+                        if views.index > 0 {
+                            views.index -= 1;
+                        } else {
+                            views.index = 3;
                         }
                     }
                     _ => {}
@@ -132,10 +135,34 @@ fn main() -> Result<()> {
     if let Some(mut path) = dirs::cache_dir() {
         path.push(".rrr");
         let mut file = File::create(path)?;
-        write!(&mut file, "{}", views.current_context().current_dir.display())?;
+        write!(
+            &mut file,
+            "{}",
+            views.current_context().current_dir.display()
+        )?;
     }
 
     Ok(())
+}
+
+#[derive(Default)]
+struct Views {
+    index: usize,
+    contexts: [Context; 4],
+}
+
+impl Views {
+    fn new() -> Result<Self> {
+        let mut views = Self::default();
+        for context in &mut views.contexts {
+            *context = Context::new()?;
+        }
+        Ok(views)
+    }
+
+    fn current_context(&mut self) -> &mut Context {
+        &mut self.contexts[self.index]
+    }
 }
 
 enum Target {
@@ -218,7 +245,7 @@ impl Context {
 
     fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
         let iterator = read_dir(&self.current_dir)?
-            .flat_map(|e| e)
+            .flatten()
             .filter(|e| {
                 !e.path()
                     .file_name()
