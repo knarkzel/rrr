@@ -45,10 +45,8 @@ fn main() -> Result<()> {
             for number in 1..=4 {
                 if number == index {
                     items.push(Span::styled(
-                        format!("[{}]", number),
-                        Style::default()
-                            .fg(Color::Blue)
-                            .add_modifier(Modifier::BOLD),
+                        number.to_string(),
+                        Style::default().add_modifier(Modifier::BOLD),
                     ));
                 } else {
                     items.push(Span::raw(number.to_string()));
