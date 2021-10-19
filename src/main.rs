@@ -10,6 +10,7 @@ use std::{
 use termion::{event::Key, input::TermRead, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{
     backend::TermionBackend,
+    layout::Rect,
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
     widgets::{Block, Paragraph},
@@ -28,12 +29,10 @@ fn main() -> Result<()> {
         let index = views.index + 1;
         let mut context = views.current_context();
 
-        // Clamp the cursor if it's out of bounds
-        let amount_files = context.read_directory()?.count();
-        if context.cursor >= amount_files {
-            context.cursor = amount_files.saturating_sub(1);
-        }
+        // Assign terminal size for paging
+        context.terminal_size = terminal.size()?;
 
+        // Create listing of files
         let listing = context.listing()?;
 
         terminal.draw(|frame| {
@@ -67,10 +66,10 @@ fn main() -> Result<()> {
                 match key {
                     Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
                     Key::Up | Key::Char('k') => {
-                        context.cursor = context.cursor.saturating_sub(1);
+                        context.cursor_up(1);
                     }
                     Key::Down | Key::Char('j') => {
-                        context.cursor = context.cursor.saturating_add(1);
+                        context.cursor_down(1);
                     }
                     Key::Left | Key::Char('h') => {
                         context.save_location();
@@ -94,10 +93,10 @@ fn main() -> Result<()> {
                         }
                     }
                     Key::Ctrl('d') => {
-                        context.cursor = context.cursor.saturating_add(10);
+                        context.cursor_down(10);
                     }
                     Key::Ctrl('u') => {
-                        context.cursor = context.cursor.saturating_sub(10);
+                        context.cursor_up(10);
                     }
                     Key::Char('o') => {
                         if let Some(target) = context.target() {
@@ -196,9 +195,11 @@ struct Options {
 #[derive(Default)]
 struct Context {
     cursor: usize,
-    previous_locations: HashMap<PathBuf, usize>,
-    current_dir: PathBuf,
+    scroll: usize,
     options: Options,
+    terminal_size: Rect,
+    current_dir: PathBuf,
+    previous_locations: HashMap<PathBuf, usize>,
 }
 
 impl Context {
@@ -212,6 +213,10 @@ impl Context {
 
     fn current_dir(&self) -> Option<&str> {
         self.current_dir.as_os_str().to_str()
+    }
+
+    fn height(&self) -> usize {
+        (self.terminal_size.height.saturating_sub(2)).into()
     }
 
     fn save_location(&mut self) {
@@ -241,6 +246,29 @@ impl Context {
         }
     }
 
+    fn cursor_up(&mut self, amount: usize) {
+        if self.cursor < amount && self.scroll > 0 {
+            self.scroll = self.scroll.saturating_sub(10);
+            self.cursor += 10;
+        } else {
+            self.cursor = self.cursor.saturating_sub(amount);
+        }
+    }
+
+    fn cursor_down(&mut self, amount: usize) {
+        let height = self.height();
+        if self.cursor + amount > height {
+            self.cursor -= 10;
+            self.scroll += 10;
+        } else {
+            self.cursor += amount;
+        }
+        let amount = self.read_directory().unwrap().count().saturating_sub(1);
+        if self.cursor > amount {
+            self.cursor = amount;
+        }
+    }
+
     fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
         let iterator = read_dir(&self.current_dir)?
             .flatten()
@@ -262,7 +290,9 @@ impl Context {
                     .unwrap()
                     .starts_with(".")
             })
-            .sorted_by_key(|e| !e.path().is_dir());
+            .sorted_by_key(|e| !e.path().is_dir())
+            .skip(self.scroll)
+            .take(self.height() + 1);
         Ok(iterator)
     }
 
