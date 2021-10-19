@@ -84,7 +84,11 @@ fn main() -> Result<()> {
                         }
                     }
                     Key::Char('.') => {
+                        context.save_location();
                         context.options.show_hidden = !context.options.show_hidden;
+                        if !context.options.show_hidden {
+                            context.restore_location();
+                        }
                     }
                     Key::Char('e') => {
                         if let Some(target) = context.target() {
@@ -192,6 +196,12 @@ struct Options {
     show_hidden: bool,
 }
 
+#[derive(Eq, PartialEq, Hash)]
+struct Location {
+    path: PathBuf,
+    show_hidden: bool,
+}
+
 #[derive(Default)]
 struct Context {
     cursor: usize,
@@ -199,7 +209,7 @@ struct Context {
     options: Options,
     terminal_size: Rect,
     current_dir: PathBuf,
-    previous_locations: HashMap<PathBuf, usize>,
+    previous_locations: HashMap<Location, (usize, usize)>,
 }
 
 impl Context {
@@ -220,14 +230,27 @@ impl Context {
     }
 
     fn save_location(&mut self) {
-        self.previous_locations
-            .insert(self.current_dir.clone(), self.cursor);
+        let location = Location {
+            path: self.current_dir.clone(),
+            show_hidden: self.options.show_hidden,
+        };
+        self.previous_locations.insert(location, (self.cursor, self.scroll));
     }
 
     fn restore_location(&mut self) {
-        match self.previous_locations.get(&self.current_dir) {
-            Some(location) => self.cursor = *location,
-            None => self.cursor = 0,
+        let location = Location {
+            path: self.current_dir.clone(),
+            show_hidden: self.options.show_hidden,
+        };
+        match self.previous_locations.get(&location) {
+            Some((cursor, scroll)) => {
+                self.cursor = *cursor;
+                self.scroll = *scroll;
+            },
+            None => {
+                self.cursor = 0;
+                self.scroll = 0;
+            }
         }
     }
 
