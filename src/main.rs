@@ -80,15 +80,17 @@ struct Context {
     scroll: usize,
     terminal_size: Rect,
     current_dir: PathBuf,
+    directory: Vec<DirEntry>,
     buffers: HashMap<Buffer, State>,
 }
 
 impl Context {
     fn new() -> Result<Self> {
-        let context = Self {
+        let mut context = Self {
             current_dir: std::env::current_dir()?,
             ..Self::default()
         };
+        context.read_directory()?;
         Ok(context)
     }
 
@@ -132,13 +134,14 @@ impl Context {
         // TODO: Make this target last file/directory instead
         if self.target().is_none() {
             self.scroll = 0;
-            self.cursor = self.read_directory()?.count().saturating_sub(1);
+            let amount = self.walk_directory()?.count().saturating_sub(1);
+            self.cursor = amount;
         }
         Ok(())
     }
 
-    fn target(&self) -> Option<DirEntry> {
-        match self.read_directory() {
+    fn target(&self) -> Option<&DirEntry> {
+        match self.walk_directory() {
             Ok(iter) => iter.skip(self.cursor).next(),
             _ => None,
         }
@@ -169,7 +172,7 @@ impl Context {
         } else {
             self.cursor += amount;
         }
-        let amount = self.read_directory().unwrap().count().saturating_sub(1);
+        let amount = self.walk_directory().unwrap().count().saturating_sub(1);
         if self.cursor > amount {
             self.cursor = amount;
         }
@@ -182,8 +185,8 @@ impl Context {
         }
     }
 
-    fn read_directory(&self) -> Result<impl Iterator<Item = DirEntry>> {
-        let iterator = read_dir(&self.current_dir)?
+    fn directory_iter(&self) -> Result<impl Iterator<Item = DirEntry>> {
+        Ok(read_dir(&self.current_dir)?
             .flatten()
             .filter(|e| {
                 !e.path()
@@ -203,15 +206,25 @@ impl Context {
                     .unwrap()
                     .starts_with(".")
             })
-            .sorted_by_key(|e| !e.path().is_dir())
+            .sorted_by_key(|e| !e.path().is_dir()))
+    }
+
+    fn read_directory(&mut self) -> Result<()> {
+        self.directory = self.directory_iter()?.collect();
+        Ok(())
+    }
+
+    fn walk_directory(&self) -> Result<impl Iterator<Item = &DirEntry>> {
+        Ok(self
+            .directory
+            .iter()
             .skip(self.scroll)
-            .take(self.height() + 1);
-        Ok(iterator)
+            .take(self.height() + 1))
     }
 
     fn listing(&self) -> Result<Text<'_>> {
         let mut text = Text::default();
-        for (line, path) in self.read_directory()?.enumerate() {
+        for (line, path) in self.walk_directory()?.enumerate() {
             if let Some(input) = path.file_name().to_str() {
                 let input = input.to_string();
                 let is_dir = path.path().is_dir();
@@ -289,12 +302,14 @@ fn main() -> Result<()> {
                     Key::Left | Key::Char('h') => {
                         context.save_buffer();
                         context.current_dir.pop();
+                        context.read_directory()?;
                         context.restore_buffer();
                     }
                     Key::Right | Key::Char('l') => {
                         if let Ok(target) = context.target_dir() {
                             context.save_buffer();
                             context.current_dir.push(target);
+                            context.read_directory()?;
                             context.restore_buffer();
                         }
                     }
@@ -303,6 +318,7 @@ fn main() -> Result<()> {
                         let buffer = context.current_buffer();
                         if let Some(state) = context.buffers.get_mut(&buffer) {
                             state.show_hidden = !state.show_hidden;
+                            context.read_directory()?;
                             context.restore_buffer();
                         }
                     }
