@@ -8,14 +8,7 @@ use std::{
     path::PathBuf,
 };
 use termion::{event::Key, input::TermRead, raw::IntoRawMode, screen::AlternateScreen};
-use tui::{
-    backend::TermionBackend,
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Span, Spans, Text},
-    widgets::{Block, Paragraph},
-    Terminal,
-};
+use tui::{Terminal, backend::TermionBackend, layout::{Constraint, Layout, Rect}, style::{Color, Modifier, Style}, text::{Span, Spans, Text}, widgets::{Block, Paragraph}};
 
 #[derive(Default)]
 struct Views {
@@ -99,7 +92,7 @@ impl Context {
     }
 
     fn height(&self) -> usize {
-        (self.terminal_size.height.saturating_sub(2)).into()
+        (self.terminal_size.height.saturating_sub(3)).into()
     }
 
     fn current_buffer(&self) -> Buffer {
@@ -266,6 +259,16 @@ fn main() -> Result<()> {
         terminal.draw(|frame| {
             let size = frame.size();
 
+            let chunks = Layout::default()
+                .constraints(
+                    [
+                        Constraint::Min(1),
+                        Constraint::Max(1),
+                    ]
+                    .as_ref(),
+                )
+                .split(size);
+
             // Header
             let mut header = Spans::default();
             let items = &mut header.0;
@@ -286,7 +289,13 @@ fn main() -> Result<()> {
 
             // Files pane
             let files = Paragraph::new(listing).block(outline);
-            frame.render_widget(files, size);
+
+            // Log pane
+            let log = Paragraph::new(":quit!");
+
+            // Render
+            frame.render_widget(files, chunks[0]);
+            frame.render_widget(log, chunks[1]);
         })?;
 
         for key in stdin().keys() {
