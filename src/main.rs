@@ -74,16 +74,6 @@ struct State {
     show_hidden: bool,
 }
 
-impl State {
-    fn new(cursor: usize, scroll: usize) -> Self {
-        Self {
-            cursor,
-            scroll,
-            show_hidden: false,
-        }
-    }
-}
-
 #[derive(Default)]
 struct Context {
     cursor: usize,
