@@ -101,7 +101,7 @@ fn main() -> Result<()> {
                     }
                     Key::Char('.') => {
                         context.save_buffer();
-                        let buffer = context.current_buffer();
+                        let buffer = context.current_dir.clone();
                         if let Some(state) = context.buffers.get_mut(&buffer) {
                             state.show_hidden = !state.show_hidden;
                             context.read_directory()?;

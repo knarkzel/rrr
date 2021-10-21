@@ -1,3 +1,4 @@
+use crate::{target::Target, utils::entry_not_hidden};
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use std::{
@@ -8,7 +9,7 @@ use std::{
 };
 use tui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Span, Spans, Text},
 };
 
@@ -32,38 +33,8 @@ impl Views {
     }
 }
 
-enum Target {
-    File,
-    Directory,
-}
-
-impl Target {
-    pub fn style(self, highlight: bool) -> Style {
-        match self {
-            Self::File => {
-                if highlight {
-                    Style::default().fg(Color::Black).bg(Color::White)
-                } else {
-                    Style::default().fg(Color::White)
-                }
-            }
-            Self::Directory => if highlight {
-                Style::default().fg(Color::Black).bg(Color::Blue)
-            } else {
-                Style::default().fg(Color::Blue)
-            }
-            .add_modifier(Modifier::BOLD),
-        }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub struct Buffer {
-    pub path: PathBuf,
-}
-
 #[derive(Debug)]
-pub struct State {
+pub struct Buffer {
     pub cursor: usize,
     pub scroll: usize,
     pub show_hidden: bool,
@@ -76,7 +47,7 @@ pub struct Context {
     pub terminal_size: Rect,
     pub current_dir: PathBuf,
     pub directory: Vec<DirEntry>,
-    pub buffers: HashMap<Buffer, State>,
+    pub buffers: HashMap<PathBuf, Buffer>,
 }
 
 impl Context {
@@ -97,23 +68,17 @@ impl Context {
         (self.terminal_size.height.saturating_sub(3)).into()
     }
 
-    pub fn current_buffer(&self) -> Buffer {
-        Buffer {
-            path: self.current_dir.clone(),
-        }
-    }
-
     pub fn save_buffer(&mut self) {
-        let state = State {
+        let state = Buffer {
             cursor: self.cursor,
             scroll: self.scroll,
             show_hidden: self.show_hidden(),
         };
-        self.buffers.insert(self.current_buffer(), state);
+        self.buffers.insert(self.current_dir.clone(), state);
     }
 
     pub fn restore_buffer(&mut self) {
-        match self.buffers.get(&self.current_buffer()) {
+        match self.buffers.get(&self.current_dir) {
             Some(state) => {
                 self.cursor = state.cursor;
                 self.scroll = state.scroll;
@@ -126,7 +91,6 @@ impl Context {
     }
 
     pub fn clamp_cursor(&mut self) -> Result<()> {
-        // TODO: Make this target last file/directory instead
         if self.target().is_none() {
             self.scroll = 0;
             let amount = self.walk_directory()?.count().saturating_sub(1);
@@ -174,34 +138,19 @@ impl Context {
     }
 
     pub fn show_hidden(&self) -> bool {
-        match self.buffers.get(&self.current_buffer()) {
-            Some(state) => state.show_hidden,
-            _ => false,
-        }
+        self.buffers
+            .get(&self.current_dir)
+            .map(|state| state.show_hidden)
+            .unwrap_or(false)
     }
 
     pub fn directory_iter(&self) -> Result<impl Iterator<Item = DirEntry>> {
         Ok(read_dir(&self.current_dir)?
             .flatten()
-            .filter(|e| {
-                !e.path()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .starts_with(".")
-                    || self.show_hidden()
-            })
-            .sorted_by(|a, b| a.file_name().cmp(&b.file_name()))
-            .sorted_by_key(|e| {
-                !e.path()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .starts_with(".")
-            })
-            .sorted_by_key(|e| !e.path().is_dir()))
+            .filter(|entry| entry_not_hidden(entry) || self.show_hidden())
+            .sorted_unstable_by(|first, second| first.file_name().cmp(&second.file_name()))
+            .sorted_unstable_by_key(entry_not_hidden)
+            .sorted_unstable_by_key(|entry| !entry.path().is_dir()))
     }
 
     pub fn read_directory(&mut self) -> Result<()> {
