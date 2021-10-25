@@ -27,7 +27,7 @@ fn main() {
         let index = views.index + 1;
         let command = if views.mode == Mode::Command {
             format!(":{}", views.command)
-        } else { 
+        } else {
             String::new()
         };
 
@@ -48,7 +48,7 @@ fn main() {
                 .constraints([Constraint::Min(1), Constraint::Max(1)].as_ref())
                 .split(size);
 
-            // Header
+            // Header and files pane
             let mut header = Spans::default();
             let items = &mut header.0;
             for number in 1..=4 {
@@ -65,8 +65,6 @@ fn main() {
             let directory = context.current_dir().unwrap_or("Invalid directory");
             items.push(Span::styled(directory, Style::default().fg(Color::Blue)));
             let outline = Block::default().title(header);
-
-            // Files pane
             let files = Paragraph::new(listing).block(outline);
 
             // Command pane
@@ -153,14 +151,15 @@ fn main() {
                         _ => {}
                     },
                     Mode::Command => match key {
+                        Key::Char('\n') => views.exit_command(),
+                        Key::Esc => views.exit_command(),
+                        Key::Ctrl('u') => views.command = String::new(),
                         Key::Char(c) => views.command.push(c),
-                        Key::Backspace => { views.command.pop(); },
-                        Key::Esc => {
-                            views.command = String::new();
-                            views.mode = Mode::Normal;
-                        },
+                        Key::Backspace => {
+                            views.command.pop();
+                        }
                         _ => {}
-                    }
+                    },
                 }
                 continue 'update;
             }

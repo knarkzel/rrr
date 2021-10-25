@@ -49,6 +49,11 @@ impl Views {
     pub fn current_context(&mut self) -> &mut Context {
         &mut self.contexts[self.index]
     }
+
+    pub fn exit_command(&mut self) {
+        self.command = String::new();
+        self.mode = Mode::Normal;
+    }
 }
 
 #[derive(Debug)]
