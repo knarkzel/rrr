@@ -1,4 +1,4 @@
-use rrr::*;
+use rrr::{state::Mode, *};
 use std::{
     fs::File,
     io::{prelude::*, stdin, stdout},
@@ -22,8 +22,16 @@ fn main() {
     let mut views = state::Views::new()?;
 
     'update: loop {
-        // Assign current context
+        // Assign current context, immutable moves here
+        let mode = views.mode;
         let index = views.index + 1;
+        let command = if views.mode == Mode::Command {
+            format!(":{}", views.command)
+        } else { 
+            String::new()
+        };
+
+        // Mutable borrows start here
         let mut context = views.current_context();
         context.clamp_cursor()?;
 
@@ -61,86 +69,98 @@ fn main() {
             // Files pane
             let files = Paragraph::new(listing).block(outline);
 
-            // Log pane
-            let log = Paragraph::new(":quit!");
+            // Command pane
+            let command = Paragraph::new(command);
 
             // Render
             frame.render_widget(files, chunks[0]);
-            frame.render_widget(log, chunks[1]);
+            frame.render_widget(command, chunks[1]);
         })?;
 
         for key in stdin().keys() {
             if let Ok(key) = key {
-                match key {
-                    Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
-                    Key::Up | Key::Char('k') => {
-                        context.cursor_up(1);
-                    }
-                    Key::Down | Key::Char('j') => {
-                        context.cursor_down(1);
-                    }
-                    Key::Left | Key::Char('h') => {
-                        context.save_buffer();
-                        let backup = context.current_dir.clone();
-                        context.current_dir.pop();
-                        if context.read_directory().is_err() {
-                            context.current_dir = backup;
+                match mode {
+                    Mode::Normal => match key {
+                        Key::Char('q') | Key::Ctrl('c') | Key::Ctrl('z') => break 'update,
+                        Key::Up | Key::Char('k') => {
+                            context.cursor_up(1);
                         }
-                        context.restore_buffer();
-                    }
-                    Key::Right | Key::Char('l') => {
-                        if let Ok(target) = context.target_dir() {
+                        Key::Down | Key::Char('j') => {
+                            context.cursor_down(1);
+                        }
+                        Key::Left | Key::Char('h') => {
                             context.save_buffer();
                             let backup = context.current_dir.clone();
-                            context.current_dir.push(target);
+                            context.current_dir.pop();
                             if context.read_directory().is_err() {
                                 context.current_dir = backup;
                             }
                             context.restore_buffer();
                         }
-                    }
-                    Key::Char('.') => {
-                        context.save_buffer();
-                        let buffer = context.current_dir.clone();
-                        if let Some(state) = context.buffers.get_mut(&buffer) {
-                            state.show_hidden = !state.show_hidden;
-                            context.read_directory()?;
-                            context.restore_buffer();
+                        Key::Right | Key::Char('l') => {
+                            if let Ok(target) = context.target_dir() {
+                                context.save_buffer();
+                                let backup = context.current_dir.clone();
+                                context.current_dir.push(target);
+                                if context.read_directory().is_err() {
+                                    context.current_dir = backup;
+                                }
+                                context.restore_buffer();
+                            }
                         }
-                    }
-                    Key::Char('e') => {
-                        if let Some(target) = context.target() {
-                            if edit_this::file(&target.path()).is_err() {}
-                            terminal.clear()?;
+                        Key::Char('.') => {
+                            context.save_buffer();
+                            let buffer = context.current_dir.clone();
+                            if let Some(state) = context.buffers.get_mut(&buffer) {
+                                state.show_hidden = !state.show_hidden;
+                                context.read_directory()?;
+                                context.restore_buffer();
+                            }
                         }
-                    }
-                    Key::Ctrl('d') => {
-                        context.cursor_down(10);
-                    }
-                    Key::Ctrl('u') => {
-                        context.cursor_up(10);
-                    }
-                    Key::Char('o') => {
-                        if let Some(target) = context.target() {
-                            if open::that(&target.path()).is_err() {}
+                        Key::Char('e') => {
+                            if let Some(target) = context.target() {
+                                if edit_this::file(&target.path()).is_err() {}
+                                terminal.clear()?;
+                            }
                         }
-                    }
-                    Key::Char(index) if ('1'..='4').any(|digit| digit == index) => {
-                        if let Some(index) = index.to_digit(10) {
-                            views.index = index.saturating_sub(1) as usize;
+                        Key::Ctrl('d') => {
+                            context.cursor_down(10);
                         }
-                    }
-                    Key::Char('>') => {
-                        views.index = (views.index + 1) % 4;
-                    }
-                    Key::Char('<') => {
-                        if views.index > 0 {
-                            views.index -= 1;
-                        } else {
-                            views.index = 3;
+                        Key::Ctrl('u') => {
+                            context.cursor_up(10);
                         }
+                        Key::Char('o') => {
+                            if let Some(target) = context.target() {
+                                if open::that(&target.path()).is_err() {}
+                            }
+                        }
+                        Key::Char(index) if ('1'..='4').any(|digit| digit == index) => {
+                            if let Some(index) = index.to_digit(10) {
+                                views.index = index.saturating_sub(1) as usize;
+                            }
+                        }
+                        Key::Char('>') => {
+                            views.index = (views.index + 1) % 4;
+                        }
+                        Key::Char('<') => {
+                            if views.index > 0 {
+                                views.index -= 1;
+                            } else {
+                                views.index = 3;
+                            }
+                        }
+                        Key::Char(':') => views.mode = Mode::Command,
+                        _ => {}
+                    },
+                    Mode::Command => match key {
+                        Key::Char(c) => views.command.push(c),
+                        Key::Backspace => { views.command.pop(); },
+                        Key::Esc => {
+                            views.command = String::new();
+                            views.mode = Mode::Normal;
+                        },
+                        _ => {}
                     }
-                    _ => {}
                 }
                 continue 'update;
             }

@@ -15,9 +15,23 @@ pub fn entry_not_hidden(entry: &DirEntry) -> bool {
         .starts_with(".")
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Mode {
+    Normal,
+    Command,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
 #[derive(Default)]
 pub struct Views {
+    pub mode: Mode,
     pub index: usize,
+    pub command: String,
     pub contexts: [Context; 4],
 }
 
@@ -28,6 +42,7 @@ impl Views {
         for context in &mut views.contexts {
             *context = Context::new()?;
         }
+        views.contexts[0].read_directory()?;
         views
     }
 
@@ -56,12 +71,10 @@ pub struct Context {
 impl Context {
     #[throws]
     pub fn new() -> Self {
-        let mut context = Self {
+        Self {
             current_dir: std::env::current_dir()?,
             ..Self::default()
-        };
-        context.read_directory()?;
-        context
+        }
     }
 
     pub fn current_dir(&self) -> Option<&str> {
