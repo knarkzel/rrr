@@ -1,5 +1,4 @@
-use crate::{target::Target, utils::entry_not_hidden};
-use anyhow::{bail, Result};
+use crate::{target::Target, utils::entry_not_hidden, *};
 use itertools::Itertools;
 use std::{
     collections::HashMap,
@@ -20,12 +19,13 @@ pub struct Views {
 }
 
 impl Views {
-    pub fn new() -> Result<Self> {
+    #[throws]
+    pub fn new() -> Self {
         let mut views = Self::default();
         for context in &mut views.contexts {
             *context = Context::new()?;
         }
-        Ok(views)
+        views
     }
 
     pub fn current_context(&mut self) -> &mut Context {
@@ -51,13 +51,14 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new() -> Result<Self> {
+    #[throws]
+    pub fn new() -> Self {
         let mut context = Self {
             current_dir: std::env::current_dir()?,
             ..Self::default()
         };
         context.read_directory()?;
-        Ok(context)
+        context
     }
 
     pub fn current_dir(&self) -> Option<&str> {
@@ -90,13 +91,13 @@ impl Context {
         }
     }
 
-    pub fn clamp_cursor(&mut self) -> Result<()> {
+    #[throws]
+    pub fn clamp_cursor(&mut self) {
         if self.target().is_none() {
             self.scroll = 0;
             let amount = self.walk_directory()?.count().saturating_sub(1);
             self.cursor = amount;
         }
-        Ok(())
     }
 
     pub fn target(&self) -> Option<&DirEntry> {
@@ -106,10 +107,11 @@ impl Context {
         }
     }
 
-    pub fn target_dir(&self) -> Result<OsString> {
+    #[throws]
+    pub fn target_dir(&self) -> OsString {
         let target = self.target();
         match target {
-            Some(target) if target.path().is_dir() => Ok(target.file_name()),
+            Some(target) if target.path().is_dir() => target.file_name(),
             _ => bail!("Error occured when trying to get current target"),
         }
     }
@@ -144,29 +146,31 @@ impl Context {
             .unwrap_or(false)
     }
 
-    pub fn directory_iter(&self) -> Result<impl Iterator<Item = DirEntry>> {
-        Ok(read_dir(&self.current_dir)?
+    #[throws]
+    pub fn directory_iter(&self) -> impl Iterator<Item = DirEntry> {
+        read_dir(&self.current_dir)?
             .flatten()
             .filter(|entry| entry_not_hidden(entry) || self.show_hidden())
             .sorted_unstable_by(|first, second| first.file_name().cmp(&second.file_name()))
             .sorted_unstable_by_key(entry_not_hidden)
-            .sorted_unstable_by_key(|entry| !entry.path().is_dir()))
+            .sorted_unstable_by_key(|entry| !entry.path().is_dir())
     }
 
-    pub fn read_directory(&mut self) -> Result<()> {
+    #[throws]
+    pub fn read_directory(&mut self) {
         self.directory = self.directory_iter()?.collect();
-        Ok(())
     }
 
-    pub fn walk_directory(&self) -> Result<impl Iterator<Item = &DirEntry>> {
-        Ok(self
-            .directory
+    #[throws]
+    pub fn walk_directory(&self) -> impl Iterator<Item = &DirEntry> {
+        self.directory
             .iter()
             .skip(self.scroll)
-            .take(self.height() + 1))
+            .take(self.height() + 1)
     }
 
-    pub fn listing(&self) -> Result<Text<'_>> {
+    #[throws]
+    pub fn listing(&self) -> Text<'_> {
         let mut text = Text::default();
         for (line, path) in self.walk_directory()?.enumerate() {
             if let Some(input) = path.file_name().to_str() {
@@ -184,6 +188,6 @@ impl Context {
                 text.lines.push(spans);
             }
         }
-        Ok(text)
+        text
     }
 }

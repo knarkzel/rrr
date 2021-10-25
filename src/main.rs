@@ -1,5 +1,4 @@
-use anyhow::Result;
-use rrr::state;
+use rrr::*;
 use std::{
     fs::File,
     io::{prelude::*, stdin, stdout},
@@ -14,7 +13,8 @@ use tui::{
     Terminal,
 };
 
-fn main() -> Result<()> {
+#[throws]
+fn main() {
     let stdout = stdout().into_raw_mode()?;
     let stdout = AlternateScreen::from(stdout);
     let backend = TermionBackend::new(stdout);
@@ -160,6 +160,4 @@ fn main() -> Result<()> {
             views.current_context().current_dir.display()
         )?;
     }
-
-    Ok(())
 }
