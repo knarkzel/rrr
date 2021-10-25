@@ -15,7 +15,6 @@ termion = "1.5.6"
 anyhow = "1.0.44"
 edit-this = "1.0.1"
 itertools = "0.10.1"
-jwalk = "0.6.0"
 
 [profile.release]
 lto = "fat"

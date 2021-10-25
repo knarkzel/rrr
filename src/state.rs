@@ -1,15 +1,18 @@
 use crate::*;
-use jwalk::WalkDir;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, ffi::OsString, fs::{read_dir, DirEntry}, path::PathBuf};
 use tui::{
     layout::Rect,
     text::{Span, Spans, Text},
 };
 
-pub struct Entry {
-    pub path: PathBuf,
-    pub name: String,
-    pub is_dir: bool,
+pub fn entry_not_hidden(entry: &DirEntry) -> bool {
+    !entry
+        .path()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with(".")
 }
 
 #[derive(Default)]
@@ -46,7 +49,7 @@ pub struct Context {
     pub scroll: usize,
     pub terminal_size: Rect,
     pub current_dir: PathBuf,
-    pub directory: Vec<Entry>,
+    pub directory: Vec<DirEntry>,
     pub buffers: HashMap<PathBuf, Buffer>,
 }
 
@@ -100,7 +103,7 @@ impl Context {
         }
     }
 
-    pub fn target(&self) -> Option<&Entry> {
+    pub fn target(&self) -> Option<&DirEntry> {
         match self.view() {
             Ok(iter) => iter.skip(self.cursor).next(),
             _ => None,
@@ -108,10 +111,10 @@ impl Context {
     }
 
     #[throws]
-    pub fn target_dir(&self) -> String {
+    pub fn target_dir(&self) -> OsString {
         let target = self.target();
         match target {
-            Some(target) if target.is_dir => target.name.clone(),
+            Some(target) if target.path().is_dir() => target.file_name(),
             _ => bail!("Error occured when trying to get current target"),
         }
     }
@@ -146,37 +149,18 @@ impl Context {
             .unwrap_or(false)
     }
 
-    // #[throws]
-    // pub fn read(&self) -> impl Iterator<Item = DirEntry> {
-    //     read_dir(&self.current_dir)?
-    //         .flatten()
-    //         .filter(|entry| entry_not_hidden(entry) || self.show_hidden())
-    //         .sorted_unstable_by(|first, second| first.file_name().cmp(&second.file_name()))
-    //         .sorted_unstable_by_key(entry_not_hidden)
-    //         .sorted_unstable_by_key(|entry| !entry.path().is_dir())
-    // }
-
     #[throws]
-    pub fn read(&self) -> Vec<Entry> {
-        let mut entries = Vec::with_capacity(1000);
-        for entry in WalkDir::new(&self.current_dir)
-            .max_depth(1)
-            .skip_hidden(self.show_hidden())
-            .sort(true)
-            .into_iter()
-            .skip(1)
-        {
-            let entry = entry?;
-            let path = entry.path();
-            let is_dir = entry.path().is_dir();
-            let name = entry.file_name().to_str().unwrap().to_string();
-            entries.push(Entry { path, name, is_dir });
-        }
-        entries
+    pub fn read(&self) -> impl Iterator<Item = DirEntry> {
+        read_dir(&self.current_dir)?
+            .flatten()
+            .filter(|entry| entry_not_hidden(entry) || self.show_hidden())
+            .sorted_unstable_by(|first, second| first.file_name().cmp(&second.file_name()))
+            .sorted_unstable_by_key(entry_not_hidden)
+            .sorted_unstable_by_key(|entry| !entry.path().is_dir())
     }
 
     #[throws]
-    pub fn view(&self) -> impl Iterator<Item = &Entry> {
+    pub fn view(&self) -> impl Iterator<Item = &DirEntry> {
         self.directory
             .iter()
             .skip(self.scroll)
@@ -185,23 +169,27 @@ impl Context {
 
     #[throws]
     pub fn read_directory(&mut self) {
-        self.directory = self.read()?;
+        self.directory = self.read()?.collect();
     }
 
     #[throws]
     pub fn listing(&self) -> Text {
         let mut text = Text::default();
-        for (line, entry) in self.view()?.enumerate() {
-            let highlight = self.cursor == line;
-            let mut spans = Spans::default();
-            let items = &mut spans.0;
-            if entry.is_dir {
-                items.push(Span::styled(&entry.name, style::directory(highlight)));
-                items.push(Span::styled("/", style::reset()));
-            } else {
-                items.push(Span::styled(&entry.name, style::file(highlight)));
+        for (line, path) in self.view()?.enumerate() {
+            if let Some(input) = path.file_name().to_str() {
+                let input = input.to_string();
+                let is_dir = path.path().is_dir();
+                let highlight = self.cursor == line;
+                let mut spans = Spans::default();
+                let items = &mut spans.0;
+                if is_dir {
+                    items.push(Span::styled(input, style::directory(highlight)));
+                    items.push(Span::styled("/", style::reset()));
+                } else {
+                    items.push(Span::styled(input, style::file(highlight)));
+                }
+                text.lines.push(spans);
             }
-            text.lines.push(spans);
         }
         text
     }
