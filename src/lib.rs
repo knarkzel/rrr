@@ -1,6 +1,6 @@
 pub mod state;
 pub mod utils;
-pub mod target;
+pub mod style;
 
 // Convenience
 pub use itertools::Itertools;

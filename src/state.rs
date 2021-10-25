@@ -1,4 +1,4 @@
-use crate::{target::Target, utils::entry_not_hidden, *};
+use crate::{utils::entry_not_hidden, *};
 use itertools::Itertools;
 use std::{
     collections::HashMap,
@@ -8,7 +8,6 @@ use std::{
 };
 use tui::{
     layout::Rect,
-    style::{Color, Style},
     text::{Span, Spans, Text},
 };
 
@@ -95,13 +94,13 @@ impl Context {
     pub fn clamp_cursor(&mut self) {
         if self.target().is_none() {
             self.scroll = 0;
-            let amount = self.walk_directory()?.count().saturating_sub(1);
+            let amount = self.view()?.count().saturating_sub(1);
             self.cursor = amount;
         }
     }
 
     pub fn target(&self) -> Option<&DirEntry> {
-        match self.walk_directory() {
+        match self.view() {
             Ok(iter) => iter.skip(self.cursor).next(),
             _ => None,
         }
@@ -133,7 +132,7 @@ impl Context {
         } else {
             self.cursor += amount;
         }
-        let amount = self.walk_directory().unwrap().count().saturating_sub(1);
+        let amount = self.view().unwrap().count().saturating_sub(1);
         if self.cursor > amount {
             self.cursor = amount;
         }
@@ -147,7 +146,7 @@ impl Context {
     }
 
     #[throws]
-    pub fn directory_iter(&self) -> impl Iterator<Item = DirEntry> {
+    pub fn read(&self) -> impl Iterator<Item = DirEntry> {
         read_dir(&self.current_dir)?
             .flatten()
             .filter(|entry| entry_not_hidden(entry) || self.show_hidden())
@@ -157,12 +156,7 @@ impl Context {
     }
 
     #[throws]
-    pub fn read_directory(&mut self) {
-        self.directory = self.directory_iter()?.collect();
-    }
-
-    #[throws]
-    pub fn walk_directory(&self) -> impl Iterator<Item = &DirEntry> {
+    pub fn view(&self) -> impl Iterator<Item = &DirEntry> {
         self.directory
             .iter()
             .skip(self.scroll)
@@ -170,9 +164,14 @@ impl Context {
     }
 
     #[throws]
-    pub fn listing(&self) -> Text<'_> {
+    pub fn read_directory(&mut self) {
+        self.directory = self.read()?.collect();
+    }
+
+    #[throws]
+    pub fn listing(&self) -> Text {
         let mut text = Text::default();
-        for (line, path) in self.walk_directory()?.enumerate() {
+        for (line, path) in self.view()?.enumerate() {
             if let Some(input) = path.file_name().to_str() {
                 let input = input.to_string();
                 let is_dir = path.path().is_dir();
@@ -180,10 +179,10 @@ impl Context {
                 let mut spans = Spans::default();
                 let items = &mut spans.0;
                 if is_dir {
-                    items.push(Span::styled(input, Target::Directory.style(highlight)));
-                    items.push(Span::styled("/", Style::default().fg(Color::Reset)));
+                    items.push(Span::styled(input, style::directory(highlight)));
+                    items.push(Span::styled("/", style::reset()));
                 } else {
-                    items.push(Span::styled(input, Target::File.style(highlight)));
+                    items.push(Span::styled(input, style::file(highlight)));
                 }
                 text.lines.push(spans);
             }
