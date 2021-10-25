@@ -1,19 +1,27 @@
 [package]
 name = "rrr"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
+
+[dev-dependencies]
+criterion = "0.3"
 
 [dependencies]
-anyhow = "1.0.44"
 dirs = "4.0.0"
-edit-this = "1.0.1"
-fehler = "1.0.0"
-itertools = "0.10.1"
 open = "2.0.1"
-termion = "1.5.6"
 tui = "0.16.0"
+fehler = "1.0.0"
+termion = "1.5.6"
+anyhow = "1.0.44"
+edit-this = "1.0.1"
+itertools = "0.10.1"
+jwalk = "0.6.0"
 
 [profile.release]
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+[[bench]]
+name = "read_directory"
+harness = false

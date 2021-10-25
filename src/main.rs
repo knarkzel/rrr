@@ -110,7 +110,7 @@ fn main() {
                     }
                     Key::Char('e') => {
                         if let Some(target) = context.target() {
-                            if edit_this::file(target.path()).is_err() {}
+                            if edit_this::file(&target.path).is_err() {}
                             terminal.clear()?;
                         }
                     }
@@ -122,7 +122,7 @@ fn main() {
                     }
                     Key::Char('o') => {
                         if let Some(target) = context.target() {
-                            if open::that(target.path()).is_err() {}
+                            if open::that(&target.path).is_err() {}
                         }
                     }
                     Key::Char(index) if ('1'..='4').any(|digit| digit == index) => {
