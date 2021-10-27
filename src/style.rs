@@ -15,6 +15,10 @@ pub fn directory(highlight: bool) -> Style {
     .add_modifier(Modifier::BOLD)
 }
 
+pub fn marked() -> Style {
+    Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD)
+}
+
 pub fn reset() -> Style {
     Style::default().fg(Color::Reset)
 }

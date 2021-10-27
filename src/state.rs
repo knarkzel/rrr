@@ -247,7 +247,9 @@ impl Context {
                 let mut spans = Spans::default();
                 let items = &mut spans.0;
                 if self.is_marked(entry.path()) {
-                    items.push(Span::raw("* "));
+                    items.push(Span::styled("+", style::marked()));
+                } else {
+                    items.push(Span::raw(" "));
                 }
                 if is_dir {
                     items.push(Span::styled(input, style::directory(highlight)));

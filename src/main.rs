@@ -152,6 +152,7 @@ fn main() {
                                 let path = entry.path();
                                 if let Some(buffer) = context.buffer_mut() {
                                     buffer.flip(path);
+                                    context.cursor_down(1);
                                 }
                             }
                         }
