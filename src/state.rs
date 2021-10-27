@@ -56,6 +56,12 @@ impl Views {
         &mut self.contexts[self.index]
     }
 
+    #[throws]
+    pub fn index(&mut self, index: usize) {
+        self.index = index;
+        self.current_context().read_directory()?;
+    }
+
     pub fn exit_command(&mut self) {
         self.command = String::new();
         self.mode = Mode::Normal;

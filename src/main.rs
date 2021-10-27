@@ -134,7 +134,7 @@ fn main() {
                         }
                         Key::Char(index) if ('1'..='4').any(|digit| digit == index) => {
                             if let Some(index) = index.to_digit(10) {
-                                views.index = index.saturating_sub(1) as usize;
+                                views.index(index.saturating_sub(1) as usize)?;
                             }
                         }
                         Key::Char('>') => {
