@@ -141,13 +141,20 @@ fn main() {
                             views.index = (views.index + 1) % 4;
                         }
                         Key::Char('<') => {
-                            if views.index > 0 {
-                                views.index -= 1;
-                            } else {
-                                views.index = 3;
+                            match views.index > 0 {
+                                true => views.index -= 1,
+                                false => views.index = 3,
                             }
                         }
                         Key::Char(':') => views.mode = Mode::Command,
+                        Key::Char(' ') => {
+                            if let Some(entry) = context.target() {
+                                let path = entry.path();
+                                if let Some(buffer) = context.buffer_mut() {
+                                    buffer.flip(path);
+                                }
+                            }
+                        }
                         _ => {}
                     },
                     Mode::Command => match key {

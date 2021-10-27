@@ -1,10 +1,16 @@
 use crate::*;
-use std::{collections::HashMap, ffi::OsString, fs::{read_dir, DirEntry}, path::PathBuf};
+use std::{
+    collections::HashMap,
+    ffi::OsString,
+    fs::{read_dir, DirEntry},
+    path::PathBuf,
+};
 use tui::{
     layout::Rect,
     text::{Span, Spans, Text},
 };
 
+// TODO: This shouldn't panic
 pub fn entry_not_hidden(entry: &DirEntry) -> bool {
     !entry
         .path()
@@ -56,11 +62,19 @@ impl Views {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Buffer {
     pub cursor: usize,
     pub scroll: usize,
     pub show_hidden: bool,
+    pub marked: HashMap<PathBuf, bool>,
+}
+
+impl Buffer {
+    pub fn flip(&mut self, path: PathBuf) {
+        let mark = self.marked.entry(path).or_insert(false);
+        *mark = !*mark;
+    }
 }
 
 #[derive(Default)]
@@ -76,10 +90,12 @@ pub struct Context {
 impl Context {
     #[throws]
     pub fn new() -> Self {
-        Self {
+        let mut context = Self {
             current_dir: std::env::current_dir()?,
             ..Self::default()
-        }
+        };
+        context.save_buffer();
+        context
     }
 
     pub fn current_dir(&self) -> Option<&str> {
@@ -91,12 +107,27 @@ impl Context {
     }
 
     pub fn save_buffer(&mut self) {
-        let state = Buffer {
-            cursor: self.cursor,
-            scroll: self.scroll,
-            show_hidden: self.show_hidden(),
+        let cursor = self.cursor;
+        let scroll = self.scroll;
+        let show_hidden = self.show_hidden();
+        let current_dir = self.current_dir.clone();
+
+        match self.buffers.get_mut(&current_dir) {
+            Some(buffer) => {
+                buffer.cursor = cursor;
+                buffer.scroll = scroll;
+                buffer.show_hidden = show_hidden;
+            }
+            _ => {
+                let state = Buffer {
+                    cursor,
+                    scroll,
+                    show_hidden,
+                    ..Default::default()
+                };
+                self.buffers.insert(current_dir, state);
+            }
         };
-        self.buffers.insert(self.current_dir.clone(), state);
     }
 
     pub fn restore_buffer(&mut self) {
@@ -108,6 +139,10 @@ impl Context {
             _ => {
                 self.cursor = 0;
                 self.scroll = 0;
+
+                // Ugly hack to make marking work. We need buffers
+                // everywhere.
+                self.save_buffer();
             }
         }
     }
@@ -167,6 +202,17 @@ impl Context {
             .unwrap_or(false)
     }
 
+    pub fn buffer_mut(&mut self) -> Option<&mut Buffer> {
+        self.buffers.get_mut(&self.current_dir)
+    }
+
+    pub fn is_marked(&self, path: PathBuf) -> bool {
+        match self.buffers.get(&self.current_dir) {
+            Some(buffer) => *buffer.marked.get(&path).unwrap_or(&false),
+            _ => false,
+        }
+    }
+
     #[throws]
     pub fn read(&self) -> impl Iterator<Item = DirEntry> {
         read_dir(&self.current_dir)?
@@ -193,13 +239,16 @@ impl Context {
     #[throws]
     pub fn listing(&self) -> Text {
         let mut text = Text::default();
-        for (line, path) in self.view()?.enumerate() {
-            if let Some(input) = path.file_name().to_str() {
+        for (line, entry) in self.view()?.enumerate() {
+            if let Some(input) = entry.file_name().to_str() {
                 let input = input.to_string();
-                let is_dir = path.path().is_dir();
+                let is_dir = entry.path().is_dir();
                 let highlight = self.cursor == line;
                 let mut spans = Spans::default();
                 let items = &mut spans.0;
+                if self.is_marked(entry.path()) {
+                    items.push(Span::raw("* "));
+                }
                 if is_dir {
                     items.push(Span::styled(input, style::directory(highlight)));
                     items.push(Span::styled("/", style::reset()));
