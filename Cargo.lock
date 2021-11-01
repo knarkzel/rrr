@@ -204,12 +204,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "edit-this"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf0d2740802b2592870ff1aa3df806a183655c79414f4342b60ed385e9dc14d7"
-
-[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -495,7 +489,6 @@ dependencies = [
  "anyhow",
  "criterion",
  "dirs",
- "edit-this",
  "fehler",
  "itertools",
  "open",

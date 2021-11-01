@@ -117,7 +117,7 @@ fn main() {
                         }
                         Key::Char('e') => {
                             if let Some(target) = context.target() {
-                                if edit_this::file(&target.path()).is_err() {}
+                                if edit::file(&target.path()).is_err() {}
                                 terminal.clear()?;
                             }
                         }
@@ -159,7 +159,11 @@ fn main() {
                         _ => {}
                     },
                     Mode::Command => match key {
-                        Key::Char('\n') => views.exit_command(),
+                        Key::Char('\n') => {
+                            views.execute_command()?;
+                            views.exit_command();
+                            terminal.clear()?;
+                        },
                         Key::Esc => views.exit_command(),
                         Key::Ctrl('u') => views.command = String::new(),
                         Key::Char(c) => views.command.push(c),

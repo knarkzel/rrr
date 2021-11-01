@@ -4,6 +4,7 @@ use std::{
     ffi::OsString,
     fs::{read_dir, DirEntry},
     path::PathBuf,
+    process::{Command, Stdio},
 };
 use tui::{
     layout::Rect,
@@ -54,6 +55,28 @@ impl Views {
 
     pub fn current_context(&mut self) -> &mut Context {
         &mut self.contexts[self.index]
+    }
+
+    #[throws]
+    pub fn execute_command(&self) {
+        let context = &self.contexts[self.index];
+        let items = match context.buffers.get(&context.current_dir) {
+            Some(buffer) => buffer
+                .marked
+                .iter()
+                .filter(|(_, marked)| **marked)
+                .map(|(entry, _)| entry)
+                .collect(),
+            _ => vec![],
+        };
+
+        Command::new(&self.command.trim())
+            .args(items)
+            .current_dir(&context.current_dir)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()?;
     }
 
     #[throws]
